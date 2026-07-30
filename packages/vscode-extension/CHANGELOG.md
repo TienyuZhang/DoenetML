@@ -1,5 +1,427 @@
 # @doenet/vscode-extension
 
+## 0.7.22
+
+### Patch Changes
+
+- ca0e785: Keep the whole check-work widget in one language.
+
+    The button rested on a label in the document's language and then reported "Correct", "37% Credit" or "Response Saved" in the reader's, so an activity declaring `lang="es"` read with `uiLocale="en"` said "Revisar" and then "Correct" on the same control.
+
+    The button, its verdict, the attempts-remaining message beside it and the validation state announced on the input now all follow the document. An author can name that button from their own prose — "Pulsa el botón $ans.submitLabel" — and a sentence that names the button has to name what the button actually says, so the label, the prose pointing at it, and the verdict are all one language.
+
+    Nothing changes when the reader's language and the document's agree. Where they differ the whole widget is now the document's — including when an activity declares no language at all, which counts as English: a reader who set `uiLocale="es"` used to see a Spanish "Correcto" beside an English "Check Work", and now sees the control wholly in English. One language on one control is the trade.
+
+    Error boxes still follow the reader: a diagnostic is addressed to whoever is looking at the screen, and no authored prose ever refers to one.
+
+- 84e1ec6: Write the names the chemistry components generate in the document's language: all 118 element names, the name an ion takes, and the message shown where a symbol names nothing.
+
+    Symbols, formulas, and anything an author's `<award>` compares against by value are unchanged. Only what is displayed as prose moves. An element's periodic group, its phase at STP and its metal category read as words but are compared as values — `$atom.groupName = Noble Gas` — so they stay as the atom database spells them in every language.
+
+    An ion's name is now looked up rather than derived. English builds an anion's name by stripping a trailing "ine" and adding "ide", with a small table for the words that rule does not fit — that is English morphology, and no other language derives its anion names that way. Each language supplies its own names instead. A transition metal's oxidation state keeps its Roman numeral, which is international, but where it sits and how it is punctuated is now the catalog's to say.
+
+    A document that declares no language reads exactly as it did before.
+
+- 97d65a5: Editor: Add bidirectional click-to-navigate between the source editor and the rendered preview.
+
+    Clicking a rendered element now moves the editor's cursor to (and reveals/centers) its source location, and moving the editor's cursor scrolls the preview to follow, debounced so it doesn't fight active typing. Works in both the VS Code extension's preview panel and `DoenetEditor`'s built-in CodeMirror editor. Clicks on a graph navigate to the `<graph>` source, clicks on the graphical elements inside it (point, vector, line, ray, lineSegment, circle, polygon, polyline) navigate to the element's own source, and drag releases don't navigate.
+
+    Implementation notes: the core now includes each component's source `position` in its renderer instructions; `DocViewer` maintains an id-to-position map from that stream to power a delegated capture-phase click handler and a `scrollToSourceOffset` prop; the line-family renderers report clicks on their JSXGraph elements through a `DocContext` callback at the same click-vs-drag disambiguation point that powers `triggerWhenObjectsClicked`. Content brought in by a copy (e.g. `$g` or `<graph extend="$g">`) navigates to the copy the author wrote where it renders, not to the copied component's original definition.
+
+    Also fixes `@doenet/codemirror`'s library build, whose Vite config pointed `lib.entry` at `CodeMirror.tsx` instead of `index.ts` — silently dropping any runtime (non-type-only) export added to `index.ts` from the built bundle that `@doenet/doenetml` consumes.
+
+- 67835f6: Editor: click-to-navigate now requires Cmd+click (macOS) / Ctrl+click (Windows/Linux), like go-to-definition, so plain clicks interact with the document without moving the editor.
+
+    - Preview → editor (both the VS Code preview panel and `DoenetEditor`): navigation to an element's source fires only with the modifier held, including clicks on graph boards, margins, and individual graph elements (Cmd/Ctrl+Enter is the keyboard equivalent on a focused graph element). The element's normal click behavior still fires alongside navigation.
+    - `DoenetEditor` editor → preview: the debounced follow-the-cursor scroll is replaced by Cmd/Ctrl+click on a spot in the source, which scrolls the preview to the element rendered from that offset. Typing and plain cursor moves never scroll the preview. `Cmd/Ctrl+Alt+P` does the same for the cursor's position, so the gesture is reachable without a mouse. The code editor otherwise reads that same modifier as "add another selection range", so mouse-driven multiple selections are turned off in it: the gesture leaves a single cursor where you clicked, and extra cursors now come from `Cmd/Ctrl+D` instead.
+    - VS Code editor → preview keeps following the cursor, as it does today, since the VS Code API exposes no mouse modifiers for editor clicks and so has no way to spell the web editor's Cmd/Ctrl+click gesture. Two additions: a `Scroll Doenet Preview to Cursor` command bound to `Ctrl+Alt+P` (`Cmd+Alt+P` on macOS), rebindable from the Keyboard Shortcuts UI and the same chord as the web editor — on macOS that chord otherwise toggles the find widget's Preserve Case, which the new binding takes over while the text of a Doenet file has focus; and a `doenet.preview.scrollPreviewWithEditor` setting (default on, like VS Code's own `markdown.preview.scrollPreviewWithEditor`) that turns the cursor-following off, leaving the command as the only thing that moves the preview.
+    - For host apps driving `DoenetViewer` directly: `onSourcePositionClick` now fires only for modified clicks, so a host no longer has to filter plain ones out itself. `scrollToSourceOffset` is unchanged for hosts that drive it from a moving cursor, but a host that drives it from a discrete gesture should set it back to `null` between requests, so that repeating the same offset scrolls again.
+
+    Since touch devices have no modifier key, click-to-navigate is unavailable on touch.
+
+- ca53727: Render the editor's context-help panel in the reader's language.
+
+    The panel that explains whatever the cursor is on was the last English surface left inside the editor. Its labels, its placeholder, and the sentences it writes about a reference — "`$m` is a reference to `<point>` (line 4)" — now come from the catalogs, with Spanish alongside.
+
+    Those sentences stay whole rather than being split at the markup inside them, so a translation decides where each quoted name sits and how the sentence is punctuated around it. Element names, attribute names and `styleNumber` stay as written, and the descriptions the panel shows still come from the schema, which is generated from the documentation and is not translated.
+
+- c205608: Editor: fix the code editor's text-selection highlight so highlighted (selected) text stays legible, especially in dark mode.
+
+    The selection highlight was rendering with CodeMirror's built-in light lavender (`#d7d4f0`) in every mode: the theme's own selection rule never took effect (CodeMirror's base theme targets the selection with a higher-specificity selector), and the editor was never told it was in dark mode, so it also fell back to CodeMirror's light-mode defaults. On the dark canvas the near-white and brightly-colored syntax tokens were then washed out under the pale highlight — and clicking away from the editor made it worse, reverting the blurred selection to the base light-gray default.
+
+    The dark-mode selection is now a dark navy (`#092c4d`) that keeps every syntax token — down to the dim comment gray — at WCAG AA contrast (≥ 4.5:1) while still reading as a selection, and light mode now correctly uses its intended neutral gray. The override matches CodeMirror's base-theme selector for both the focused and blurred states, and the theme now passes the real brightness to CodeMirror so its base defaults align.
+
+    The light-mode comment color is also darkened slightly (`#656d76` → `#5c636d`) so highlighted comments clear WCAG AA against the light selection background too (they previously sat at ~4.1:1); it remains above AA on the white canvas.
+
+    Adds `@doenet/codemirror` Cypress component tests (`selectionAccessibility.cy.tsx`) that select highlighted code and assert the WCAG contrast between each rendered token color and the actual selection-background color, in light mode, dark mode, and after the editor is blurred. (`cy.checkA11y` can't be used for this: axe-core cannot resolve CodeMirror's separate selection layer / `::selection` pseudo-element and instead compares tokens against a phantom white background.)
+
+- f363e32: Offer the languages DoenetML has translations for as autocomplete and help for `<document lang>`.
+
+    Typing `lang="` in the editor now lists each language by tag, named in English
+    and in itself — `es` as "Spanish (español)" — and the context-help panel shows
+    the same list under "Suggested values". The list comes from the catalogs in the
+    repository, so a language added later appears in both places without anyone
+    maintaining a second copy of it.
+
+    They are suggestions, not a constraint. `lang` still takes any BCP-47 tag, and
+    a document in a language nobody has translated the interface into is not a
+    mistake: its tag reaches the rendered `lang` attribute, where a screen reader
+    picks a voice and the browser hyphenates, with only the prose the core computes
+    falling back to English. So the editor draws no squiggle under a tag it does
+    not recognize, the help panel says "Suggested values" rather than "Allowed
+    values" so it does not claim a rule nothing enforces, and typing an unlisted
+    tag unquoted still gets the same offer to quote it that any free-text attribute
+    gets.
+
+- 164d88e: Render the editor's own chrome in the reader's language.
+
+    The viewer chrome was translated; the editor's was not, so a reader who set `uiLocale="es"` — or opened a document declaring `<document lang="es">` — got a Spanish document inside an English editor. It showed worst in the Diagnostics panel, where a translated message sat beside an untranslated `Line #2`.
+
+    The footer, the diagnostics and responses panels, the variant picker, the accessibility button and the update button all follow the same language now, and that language is the one the viewer resolved rather than the one the surrounding host chrome uses — so the two halves of the editor can never disagree. Spanish translations ship with it.
+
+- f630ca2: Show the editor's diagnostic tooltips in the reader's language: the message, the severity heading above it, and the accessibility headings.
+
+    Hovering a squiggle was the last place a diagnostic stayed English no matter who was reading. The checks the language server runs as you type — an unrecognized element, one in a parent that doesn't accept it, an unknown attribute, a value outside its enumeration — now read in the same language as the Diagnostics tab beside them.
+
+    The lint panel and what a screen reader announces follow the same text, so no surface of one diagnostic disagrees with another. A document that declares its own language is read in that language here too, the same as everywhere else the reader's language is left unset.
+
+    A language that arrives after the editor is already up — a host switching it, or a `<document lang>` the viewer has only just parsed — redraws the squiggles that are already marked, rather than leaving them in the previous language until the next edit.
+
+    Also fixes squiggles disappearing when the editor re-renders. Re-rendering `<DoenetEditor>` reconfigures the CodeMirror instance behind it, which used to discard every diagnostic on screen — and nothing brought them back until the language server next published. The editor now carries the lint state in its own configuration, so what is marked stays marked.
+
+    With no locale configured anywhere, every tooltip reads exactly as it did before.
+
+- b97857e: Render the red error box inside a document in the reader's language, instead of leaving it English beside a Diagnostics panel that was already translated.
+
+    The same error reported in two places used to read in two languages: the panel showed the reader's, the box in the document showed the English the worker wrote. The box now renders from the same code and arguments the panel does, so the two agree.
+
+    The line the error was found on follows the reader too. It is a message with a line number in it rather than a sentence the worker assembles, so a translation can put the number where its own language wants it.
+
+    An error that has no code yet still shows the English it arrived with, unchanged.
+
+- e8d9809: Editor: stop the hover from showing one problem twice, and let error messages
+  be translated like every other diagnostic.
+
+    Errors raised while the source is being turned into components are thrown, not
+    built, and the `_error` component they become had nowhere to keep the code
+    naming the situation — so an error was the one diagnostic that could only ever
+    reach the reader in English. It now carries the code and its arguments through,
+    and the invalid-component-type, repeated-attribute and invalid-attribute errors
+    are translatable wherever diagnostics are shown — the Diagnostics panel, the
+    editor hover, and a host's `setDiagnosticsCallback`. The error box drawn in the
+    document itself still reads in English; that is a separate step.
+
+    That also fixes what would have surfaced as duplicate squiggle text: the LSP
+    merges the parser's copy of a diagnostic with the worker's echo of it, and once
+    the echo is rendered in the reader's language the two are no longer the same
+    string. A record is now matched by its message and, when it has one, also by
+    its code plus the arguments filling it in — agreeing on either makes it the
+    same diagnostic, so a copy that has a code and one that doesn't still collapse
+    while they agree on the English. The arguments are part of the match because a
+    code names a message template rather than one occurrence of it: a single
+    component can report the same code twice with different values, and both still
+    reach the author.
+
+- dd4f83e: Graphs: stop math drawn inside a graph from taking a keyboard tab stop.
+
+    A graph is presented to assistive technology as a single image named by its `<shortDescription>` — or hidden entirely, when it is `decorative` — so a label drawn inside it is not separately reachable. MathJax, though, marks every expression it renders as focusable, which put a tab stop on each math label in the graph: `<graph><label><m>A</m></label></graph>` made keyboard users stop on an `A` that is not in the accessibility tree and does nothing when focused.
+
+    Math drawn inside a graph is now skipped when tabbing. Math elsewhere on the page is unchanged, as are the graph's own keyboard-navigable objects and any input or button anchored in it — those still take focus as before.
+
+- dd10466: Translate more of the words the core computes into a document: boolean words, the default submit-button labels, and the `if`, `or` and `otherwise` a piecewise function writes around its branch conditions.
+
+    A `<boolean>` or `<booleanInput>` in a Spanish activity now reads "verdadero" and "falso" where an author interpolates `$b.text` into their prose. The _value_ is untouched: `true` and `false` are DoenetML syntax, so an `<award>` comparing against them, and saved state holding them, work the same in every language. Where a boolean is read back out of text — `$b.text` bound to an input — both spellings are accepted.
+
+    An answer's submit button says "Revisar" instead of "Check Work" in a Spanish activity, and the same for a section-wide check-work button. Only the _default_ is translated: `submitLabel="Ready?"` is the author's own wording and passes through verbatim in every language, including when it happens to match the English default.
+
+    `<intComma>` groups by the document's own conventions rather than always in English — `25.236.501,35` in Spanish or German, `12,34,567` in Hindi. It still groups rather than rounds, so a value written with trailing zeros keeps them.
+
+    `<pluralize>` works by running an English model over its text, and there is no equivalent for an arbitrary language. In a document written in another language it now leaves the text alone and says so, rather than silently doing nothing — unless the author supplied a `pluralForm`, which needs no model and is used in every language, with `basedOnNumber` choosing between the two forms. `<lorem>` stays Latin in every language, which is what placeholder text is for.
+
+    Numbers inside mathematics keep `.` as their decimal separator in every language. A decimal comma is a real and wanted feature, but it has to arrive on the input side at the same time — until then, changing it would change what a grader compares rather than only how it looks.
+
+    An answer's or section's `showCorrectness` and `colorCorrectness` are now properties an author can reference as `$a.showCorrectness` and `$a.colorCorrectness`, reporting the resolved values after any enclosing section's setting, hand-grading and the activity-wide flag are taken into account. The raw attribute values behind them, and the raw value behind a submit label, are no longer reachable under their internal names.
+
+    With no locale configured, every one of these reads exactly as it did before.
+
+- ea07d40: Give stable codes and translatable messages to the remaining directly authored
+  diagnostics in the worker: the PreFigure renderer's fallbacks, `<updateValue>`,
+  `<copy>`, `<collect>`, `<dataFrame>`, `<answer>` and section-wide check work,
+  `<module>` attributes, `<conditionalContent>`, `<slider>`, pretzel validation,
+  `<mathInput>` function names, and invalid attribute values. Lists and counts in
+  these messages now agree through the catalog rather than through string
+  concatenation.
+- 0110575: Give stable codes and translatable messages to the diagnostics raised by the
+  math components: `<circle>`, `<function>`, `<sequence>` and
+  `<selectFromSequence>`, `<animateFromSequence>`, `<odeSystem>`, `<angle>`,
+  `<parabola>`, `<intersection>`, and the ionic-compound and eigendecomposition
+  helpers. Counts inside these messages now agree with their nouns through the
+  catalog rather than through string concatenation.
+- 5760bf2: Give stable codes and translatable messages to another 48 diagnostics, covering
+  accessibility checks, `<label>`'s `for` attribute, `<sideBySide>`, `<sort>` and
+  `<shuffle>`, attract and constrain targets, and index ordering. The
+  section-heading contrast warning now picks its dark-mode wording from the
+  catalog and formats its ratio for the reader's locale instead of assembling
+  English in the caller.
+- 5873ff7: Translate the diagnostics that explain why unique variants could not be
+  determined, and the warnings the PreFigure graph conversion raises.
+
+    These were the largest group of messages still reaching authors only in English.
+    Three helpers built them on their callers' behalf, so roughly sixty messages sat
+    behind three diagnostic constructions — invisible to the migration's own
+    progress count, and unreachable by any translation.
+
+    The English is otherwise unchanged. The one exception is a PreFigure warning
+    about a descendant with no component type, which now names it `<?>` rather than
+    `<unknown>`: the subject of these warnings is handed to the message as an
+    argument, so an English word there is one no translation can reach.
+
+- e2ddc2d: Stop reporting the core's broken invariants as diagnostics.
+
+    Eighteen messages raised when something inside the core does not add up — a
+    state variable that should exist and doesn't, an array index past the end of
+    its own array, a parent that vanished before its children were added — no
+    longer reach the diagnostics list. They name state variables and component
+    indices, never anything in the document, and there is nothing an author can do
+    about one. They are now plain English lines on the console, worded exactly as
+    before.
+
+    Three more named something an author had written, and those become two
+    translated warnings that say only that part: an index that cannot be applied
+    now reads ``Cannot reference index `$p.styleDescription[1]` `` and is marked on
+    the reference that wrote it rather than on whatever it pointed at, and a
+    `<callAction>` whose `actionName` the target does not have now reads
+    ``Cannot call submitAnswer on component `$p` `` rather than quoting a component
+    index no author has seen.
+
+- c021a4b: Translate the parser's diagnostics — the unclosed tags, mismatched quotes,
+  invalid names and deprecation notices an author sees before anything runs, and
+  usually the first Doenet message a beginner ever reads. Spanish included, so a
+  `uiLocale="es"` reader now gets them in Spanish rather than in English.
+
+    A parser error reaches the editor twice: once from the language server and once
+    as the worker's echo of it. Both copies now carry the same stable code, so the
+    editor recognizes them as one error and shows the translated one, instead of
+    the same problem twice in two languages.
+
+    The seventeen hand-written deprecation notices, which differed only in the
+    attribute and component names they mentioned, are now three messages — one per
+    shape — with the component name chosen in the catalog rather than pasted in
+    beforehand, so a translation can place or drop that clause as its own grammar
+    requires.
+
+- 79fedef: Add a `lang` attribute to `<document>` and `documentLocale` / `uiLocale` settings to the viewer and editor, laying the groundwork for translated activities.
+
+    `<document lang="es-MX">` declares what language the content is written in. The rendered activity then carries a matching `lang` attribute, so screen readers pronounce the content with the right voice and rules — an accessibility improvement that applies today, before any strings are translated.
+
+    `<document>` also gains a public `locale` property reporting the language tag actually in effect, whether that came from an authored `lang` or from the host.
+
+    Hosts can supply the same information from outside the document with the new `documentLocale` prop (`data-doenet-document-locale` on a standalone container), and can set the language of the surrounding interface separately with `uiLocale`, which defaults to following `documentLocale`. An authored `lang` always wins over the host's setting: the author knows what language they wrote in. Both settings are available through `DoenetViewer`, `DoenetEditor`, `@doenet/standalone`, and `@doenet/doenetml-iframe`; the React components additionally take a `localeResources` prop for supplying translated message catalogs.
+
+    Language tags are accepted in any casing (`ES-mx` works the same as `es-MX`), and a blank tag counts as not set.
+
+    Content itself is not translated yet. With the default locale, output is unchanged.
+
+    Also corrects two long-standing errors in the `@doenet/standalone` README: it showed `data-doenet-*` settings on the inner `<script type="text/doenetml">` element, when they are read from the container element only, so attributes written on the script have never taken effect; and its usage example called a global named `renderDoenetToContainer`, which does not exist — the exported globals are `renderDoenetViewerToContainer` and `renderDoenetEditorToContainer`.
+
+- e818298: Translate the viewer's own interface, and ship Spanish.
+
+    Buttons, panel headers, error messages, and screen-reader announcements — "Correct", "Response Saved", "Max credit available: 80%", "1 attempt remaining", "Show footnote", the "(click to open)" beside a solution, hint, or collapsible section heading, the "This document contains errors!" banner, the matrix input's row and column controls, the subset-of-reals input's mode buttons, the orbital diagram's row, box, and arrow buttons, the ⓘ tooltip on an input's description, the virtual keyboard's labels — now come from message catalogs instead of being written into the code. Setting `uiLocale="es"` (or `data-doenet-ui-locale="es"` on a standalone container) renders all of it in Spanish, with no other configuration. An activity that declares `<document lang="es">` gets the Spanish interface automatically, since the interface follows the content's language unless a host says otherwise.
+
+    Counts are pluralized by the rules of the language being rendered rather than by English's, so Spanish says "queda 1 intento" and "quedan 2 intentos" where English says "1 attempt remaining" and "2 attempts remaining".
+
+    Hosts can supply their own catalogs through `localeResources` to add a language or correct a bundled translation.
+
+    With no locale configured the interface is unchanged, apart from the startup message, which now reads "Initializing..." rather than "Initializing....".
+
+- 9ccf23a: Translate style descriptions, and ship the Spanish vocabulary.
+
+    "thick dashed blue line", "filled blue circle with a thick red border", "green square", "black with a yellow background" — the words `styleDescription`, `styleDescriptionWithNoun`, `borderStyleDescription`, `fillStyleDescription`, `textStyleDescription`, `textColor`, and `backgroundColor` report now come from message catalogs. An activity set to Spanish, by `documentLocale="es"` or by declaring `<document lang="es">`, describes its graphics in Spanish with nothing else configured.
+
+    These are the words authors interpolate into their prose with `$line.styleDescription`, and the words a screen reader announces for a graph, so they follow the language the activity was _written_ in rather than the reader's interface language.
+
+    Word order and agreement belong to the language, not to the code that assembles the sentence. Spanish puts adjectives after the noun and inflects them to match its gender, so it says "línea discontinua gruesa roja" where English says "thick dashed red line", and "círculo azul relleno con un borde grueso rojo" where English says "filled blue circle with a thick red border" — including agreeing the border's adjectives with the word for border rather than with the shape around it.
+
+    A word an author writes themselves — `lineColorWord="chartreuse"`, `markerStyleWord`, or a CSS color asked for by name like `rebeccapurple` — is left exactly as written.
+
+    A shape that names itself after another, such as a triangle or a rectangle, is now described with its own noun rather than by rewriting the finished English sentence, so `$triangle.styleDescriptionWithNoun` reads correctly in every language.
+
+    Hosts can supply their own catalogs through `localeResources` to describe graphics in a further language, or to correct a bundled translation — the same way they already could for the interface.
+
+    With no locale configured, every description reads exactly as it did before, with one exception: a `<regularPolygon>` reports its side count through the locale's own number formatting, so a thousand-sided one now reads "1,000-sided regular polygon" rather than "1000-sided regular polygon". Every side count anyone writes in practice is unaffected.
+
+- 0ccc589: Give warnings and errors stable codes, and translate the first of them.
+
+    Every diagnostic that has moved into the message catalogs now carries a permanent code — `doenet-w0001`, `doenet-i0001` — alongside its message. A code names one situation forever, whatever language the message is shown in and however the wording is later revised, so it is something to cite in a bug report or filter on. It reaches an embedding page on the diagnostic record, and the editor's language server publishes it in the standard LSP `code` field; nothing displays it on screen yet, which arrives with the documentation pages the codes will link to.
+
+    Because a diagnostic now carries its code and the values that fill its message in, rather than a finished sentence, it can be shown in the reader's language. Diagnostics follow `uiLocale`, not `documentLocale`: they are addressed to whoever is looking at the screen, so a Spanish-speaking student working a French activity reads the activity in French and its warnings in Spanish. Setting `uiLocale="es"` now reports `<line>`, `<lineSegment>`, `<ray>` and `<vector>` diagnostics in Spanish with nothing else configured.
+
+    Lists inside a message are assembled by whichever language ends up rendering it, rather than pieced together as English and handed over as a finished string. So the verb agrees with the list beside it — "slope is ignored" for one attribute against "slope and length are ignored" for two — and a message that has no translation yet keeps both its sentence and its list in English instead of mixing the two.
+
+    Also fixed: a host that files its `localeResources` under a locale tag `Intl` cannot parse — `en_US`, the POSIX spelling, rather than `en-US` — no longer renders that catalog's messages that count things as `{???}`. That covers the chrome's "attempts remaining" and submitted-response counts as well as the new diagnostics: the host's own wording is used, with English counting and number conventions.
+
+    The remaining messages still report in English and are unaffected. With no locale configured, every diagnostic reads exactly as it did.
+
+- ab82a9d: Translate the last of the worker's author-facing diagnostics: circular
+  dependencies in a copy or composite, references that resolve to nothing or to
+  several things, children that do not match what a component accepts, an
+  attribute value that falls back to its default, and the embed's
+  DoenetML-version failure.
+
+    Circular dependencies were reported by two components in two places with the
+    same wording; they now share one code, so a host filtering on it catches both.
+
+- 284ff85: Give the language server's schema checks stable diagnostic codes, so the squiggles the editor draws under an unrecognized element, a misplaced one, an unknown attribute, or a value outside its enumeration can be translated and cited.
+
+    These were the last author-facing diagnostics composing their English at the point they were raised, with no name a bug report could quote or a host could filter on. Each now carries a code and the values that fill its message in, alongside the English it has always shown, and the same sentences are in the message catalogs for translators.
+
+    The check for a name that does not start with a letter shares its code with the parser's identical check rather than taking a second name for one mistake, which also lets the editor collapse the two reports into one entry.
+
+    Every message reads exactly as it did before.
+
+- 07b1f24: Graphing: add new ways to define a `<lineSegment>` via `slope`, `length`, `midpoint`, and `midpointOffset` attributes, plus a public `midpoint` property giving its actual midpoint.
+
+    A `<lineSegment>` can now be positioned without giving both endpoints explicitly:
+
+    - `midpoint` (attribute) — a reference point on the segment, located at its midpoint by default.
+    - `slope` and `length` — the segment's x-y direction and its signed defining length (a negative `length` flips the endpoints). The public `length` state variable still reports the Euclidean distance between the endpoints.
+    - `midpointOffset` (clamped to `[-1, 1]`) — where the `midpoint` point sits along the segment: `-1` = first endpoint, `0` = midpoint, `1` = second endpoint.
+    - `midpoint` (property) — a public state variable giving the segment's actual midpoint (the average of its endpoints), with `midpoint.x`/`midpoint.y` access and a translation inverse. It equals the `midpoint` attribute point when `midpointOffset` is `0` and differs from it when `midpointOffset` is nonzero.
+
+    These combine so a segment can be defined by an endpoint plus `midpoint`, an endpoint plus `slope`/`length`, `midpoint` plus `slope`/`length`, or `slope`/`length` alone. When one endpoint and `midpoint` are given, the second endpoint is placed so the given point sits at the `midpointOffset` position of the segment — by default the midpoint, so `endpoints="(1,2)" midpoint="(2,3)"` yields endpoints `(1,2)` and `(3,4)`. Dragging a graph handle keeps the opposite endpoint fixed while the midpoint tracks its position, and dragging a referenced endpoint translates the segment (for the slope/length cases). When none of the new attributes are given, behavior is unchanged. The generated schema recognizes the new attributes in editor diagnostics.
+
+    Closes #1376.
+
+- 5427160: List items: fix a leading child that renders nothing breaking the layout of a `<part>` or `<task>`.
+
+    A list item aligns its hanging number against its first visible child. Children that render nothing — `<setup>`, `<variantControl>`, `<animateFromSequence>`, `<solveEquations>` and the like — were still eligible to be chosen, so the child that actually rendered first kept its top margin and never reported the alignment it needs. A `<part>` starting with a `<setup>` followed by a `<graph>` (or image, video, tabular, spreadsheet, or block `<choiceInput>`) put its number at the bottom of that content instead of the top.
+
+    Also, a section no longer hides its `<setup>` and `<variantControl>` along with its content. Hiding a `<setup>` hid everything defined inside it, which stripped hidden pieces out of the text of those definitions — so text defined in the `<setup>` of an unrevealed `<cascade>` step came back incomplete.
+
+- a4ba205: Editor: cut the bundled DoenetML language server roughly in half.
+
+    The server reached `@doenet/utils` through its root barrel for a single
+    function, dragging math-expressions, the AST helpers and the URL utilities into
+    the bundle alongside it. Those math-input function-name helpers now have an
+    entry point of their own, taking the built server from 2.3 MB to 1.1 MB
+    minified (640 KB to 317 KB gzipped). The server ships inline inside the code
+    editor, so every package that embeds the editor downloads and parses that much
+    less before the first cursor-help request can be answered.
+
+- 9fdb73f: Let a nested `<document lang>` reach the rendered page.
+
+    An inner `<document lang="es">` already resolved its language in the core and had its computed prose translated, but nothing in the DOM said so: the `lang` attribute was only ever written for the activity as a whole, so a screen reader read the Spanish subtree with an English voice.
+
+    The inner document now carries its own `lang` — but only when its language differs from the one already in effect around it. A nested document that merely restates the surrounding language adds no attribute, since the DOM already says it.
+
+- 59a0ded: VS Code extension: Keep the preview window's scroll position when the source is refreshed.
+
+    Previously, every refresh of the preview (saving the document, pressing Force
+    Refresh, or switching editors) rebuilt the rendered activity and reset the
+    preview's scroll position to the top. The preview now records its scroll
+    position when new source arrives and re-applies it while the viewer re-renders,
+    clamped to the content height (so a shorter document lands at its bottom rather
+    than jumping to the top). Restoration stops as soon as the user scrolls or
+    interacts with the preview, or after a few seconds.
+
+- 66127ee: Sections: fix children silently disappearing when a section contains a `<stylePalette>`, `<styleDefinition>`, or `<feedbackDefinition>`.
+
+    Each of those configuration children shifted the section's rendered-child indices by one, so content at the end of the section was silently dropped — one child for each configuration child present.
+
+- bbd7081: Write the word a sectional block calls itself in the document's language: section, example, problem, part, proof, solution, answer, hint, and the rest.
+
+    The heading a section builds around that word moves with it. "Section 2: Limits" used to be assembled by concatenation — the word, a space, the number, then a colon or a period before the title — which is English order and English punctuation written into the code. It is now one message per shape, so a translation can order and punctuate each one on its own terms.
+
+    The word is keyed by the element an author writes rather than by an internal class name, so `<subsection>` and `<subsubsection>` share the word for section, and a block whose name the author set with `renameTo` keeps their word in every language.
+
+    An unnumbered block such as `<proof>`, asked to include its number, used to render the word "null" where the number would have gone. It now renders no number, which is what it has.
+
+    A block whose `renameTo` is empty, or is nothing but blank space, likewise renders no name, rather than the space and colon that used to be written around the word that isn't there.
+
+    Apart from those, a document that declares no language reads exactly as it did before.
+
+- 4a64c4a: Show the `<select>` family's error boxes in the reader's language.
+
+    `<select>`, `<selectFromSequence>` and `<selectPrimeNumbers>` replace themselves with a red box when nothing can be selected, and that box was built from a finished English sentence. It was the last error box that stayed English on a page rendering in any other language.
+
+    The twenty-two messages behind it now carry the same stable codes every other diagnostic does, with Spanish translations alongside. Two failures that read as one — a sequence whose values all share a factor, and a sequence that ran out of draws looking for a coprime pair — are separate codes, because they are separate situations.
+
+    The English text of every box is unchanged, except that a count of a thousand or more is now written the way the reader's language writes numbers — "Cannot select 1,500 components" rather than "1500".
+
+- bfe075d: Added style palettes: named, coordinated sets of style definitions selectable with the new `<stylePalette>` component. The six standard styles are now the `default` palette, joined by eight more — the colorblind-friendly `okabeIto` (Okabe-Ito), `tolBright`, `tolMuted`, and `tolHighContrast` (Paul Tol), and `ibm` (IBM Design Library); a pure-luminance `grayscale` for readers who distinguish styles by lightness alone; and `categorical` (ten maximally varied hues) and `grumpyNarwhal` (six saturated hues that go neon in dark mode) for documents that need many obviously different styles. Every palette is WCAG-checked in light and dark mode, varies marker shapes and line widths alongside colors, and carries curated style-description color words.
+
+    A palette selection scopes to its containing section and resets that subtree's base styles; `<styleDefinition>` overrides still apply on top, and style numbers beyond the palette's size cycle through the palette. Every palette has at least four styles, and the documentation now advises reserving style numbers 1-4 for the most important distinctions. Style number 1 always renders text in the ordinary document text color, so selecting a palette never recolors prose that specifies no style number. Palette names autocomplete in the editor, and the context-help panel resolves styles against the active palette.
+
+- 04a0dba: Punctuate a table's title and a figure's caption from the document's language.
+
+    `<table>` and `<figure>` already named themselves in the document's language, but the `": "` joining that name to the authored title or caption was written into the renderer, so a Spanish activity read **`Figura 2`: pie de foto** — the name from one language and the punctuation from another. The separator is part of the name the catalog composes now, so a language that joins the two differently can say so.
+
+    The English text is unchanged. The separator is emphasized along with the name it belongs to, so `<strong>Figure 2</strong>: caption` becomes `<strong>Figure 2: </strong>caption`.
+
+- d42f6dd: Write the words a `<table>`, a `<figure>`, and a `<paginatorControls>` name themselves with in the document's language.
+
+    "Table 2" and "Figure 3" are one message each rather than a word with a number stuck on the end, so a language that orders or punctuates them differently can say so.
+
+    The paginator's "Page 3 of 5" is now composed as a whole sentence in the document's language. It used to be half worker and half renderer — the word came from the document, the "of" joining the counts was English written into the viewer and unreachable — so a translated activity read "Página 3 of 5".
+
+    `previousLabel`, `nextLabel`, and `pageLabel` follow the document when the author leaves them unset, and pass through untouched when the author writes them — including when what they wrote is the English default.
+
+    A document that declares no language reads exactly as it did before.
+
+- c14705f: Style-contrast accessibility alerts can now be translated, as can the warning
+  that a section selected more than one `<stylePalette>`.
+
+    The contrast alerts named the colors they compared — "text color against
+    background color", " (dark mode)" — by building the sentence out of English
+    fragments, so no translation could reposition or reword them. The pair and the
+    mode are now data the message renders, and the dark-mode advice is a variant of
+    the message rather than a second sentence appended to it.
+
+    Translating them gives the style utilities a runtime dependency on the message
+    catalogs, and the DoenetML language server — embedded in the code editor as
+    well as in the VS Code extension — imports those utilities for something
+    unrelated. That would have added 20 KB gzipped of catalog text to it with none
+    of the code that reads it. The catalogs are declared side-effect-free instead,
+    so the language server is unchanged byte for byte, and a new build check fails
+    if they ever arrive.
+
+- d2fcb69: VS Code: Ctrl+Space now offers Doenet elements anywhere in a document.
+
+    Pressing Ctrl+Space (or Ctrl+I / Cmd+I) where no `<` has been typed used to
+    produce nothing from the language server, so VS Code fell back to its own
+    word-based suggestions — words scraped out of the file, which read as invented
+    tags and attributes. It now opens the element menu, the same as Ctrl+Space in
+    the web editor, and keeps narrowing it as you type. Word-based suggestions are
+    off by default in Doenet documents, where they only ever compete with the
+    schema; `"[doenet]": { "editor.wordBasedSuggestions": ... }` turns them back on.
+
+    Attribute suggestions no longer go missing. Typing `<math exp` reaches the
+    language server only if quick suggestions open the suggestion widget — unlike
+    `<`, which is a trigger character the server is always asked about — so an
+    editor configured to render them inline instead left element suggestions
+    working while attribute suggestions appeared to be missing entirely. Doenet
+    documents now ask for the widget by default; an explicit
+    `editor.quickSuggestions` setting still wins.
+
+    Both defaults are contributed under `[doenet]`, which raises the extension's
+    minimum VS Code version to 1.85 — the release where
+    `editor.wordBasedSuggestions` became an enum.
+
+    The language server also attaches to Doenet documents on any filesystem rather
+    than only `file:` and `untitled:` ones, so completions, diagnostics, hovers and
+    formatting work on vscode.dev, github.dev, and in virtual workspaces.
+
+    Two fixes alongside: the preview no longer throws when the last editor closes
+    or focus leaves the editor area, and the extension now publishes to the Open
+    VSX registry as well as the VS Code Marketplace, putting it within reach of
+    VS Code-compatible editors such as VSCodium (#1317).
+
+- 8157928: Always label the rendered activity with the language it was rendered in.
+
+    The container the viewer renders carries a `lang` attribute even when nobody declared a language — no `<document lang>`, no `documentLocale` from the host. Such an activity is labeled `en`, the language the core computes its prose in. Were the container left unlabeled, its subtree would inherit the embedding page's language instead, so a Spanish page could wrap an English "Check Work" and an English "thick red line" in a subtree the DOM called Spanish, and a screen reader would read them with a Spanish voice.
+
+    An author who wrote in another language and never said so should declare it — `<document lang="es">` — the same fix that already gets them Spanish style descriptions and Spanish chrome.
+
 ## 0.7.21
 
 ### Patch Changes
